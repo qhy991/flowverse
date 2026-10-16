@@ -30,6 +30,10 @@ every chain's worktree, artifact root, and report log, plus the leaderboard, int
 chain gets the frozen paths of every other chain, the peer reports, and an adoption protocol.
 Blocked chains are frozen and offered like the others, and the prompt marks them as blocked.
 
+Where GNU `cp --archive` is unavailable, as on macOS, the copy skips sockets, FIFOs, and device
+files, such as a git fsmonitor socket. The `barrier_committed` event lists the skipped paths in
+`skipped_special_files`.
+
 The run state stores one new fact, an append-only list of barrier receipts. Each receipt records
 every chain's turn count, whether it was blocked, and the size of its frozen report log. The
 runtime derives which chains are held, and whether a session is the first after a barrier, from
@@ -86,7 +90,8 @@ epoch is kept. During a barrier, two epochs are on disk until the new receipt is
   leaderboard. The flow's own instructions override that text in each prompt.
 - A barrier freezes each chain's current worktree, not its best evaluator-accepted package.
 - A frozen copy is writable. An agent that writes inside `shared/epochs/` can change what the
-  other chains see. The runtime checks only the frozen report-log sizes against the receipt.
+  other chains see. The runtime checks only that the frozen directories exist, that the
+  report-log sizes match the receipt, and that the frozen leaderboard is a JSON object.
 
 ## License
 

@@ -11,8 +11,10 @@ leaderboard state, manifests, cursors, or anything under `shared/epochs/`.
 
 A barrier is committed only when its receipt is persisted. An epoch directory without a receipt
 is discarded on resume, which logs `barrier_epoch_discarded`, and the barrier is frozen again
-from the chains' current content. The committed epoch's directories and log sizes are checked
-against its receipt on every layout check, and a mismatch fails closed.
+from the chains' current content. The committed epoch's directories, log sizes, and frozen
+leaderboard are checked against its receipt on every layout check, and a mismatch fails closed.
+Where GNU `cp --archive` is unavailable, a barrier skips sockets, FIFOs, and device files, and
+its `barrier_committed` event lists them in `skipped_special_files`.
 
 The same substantive task resumes compatible state. A run keeps the barrier interval it was
 created with, and resuming with a different `barrier_interval` is rejected. A bare `continue`

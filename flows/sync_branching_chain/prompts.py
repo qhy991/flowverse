@@ -28,8 +28,12 @@ read:
 - other chains' live worktrees: {source}everything under `{run_root}/private/` except your cwd;
 - any other report log under `{run_root}/shared/reports/`;
 - other chains' artifact roots under `{run_root}/shared/artifacts/`;
-- `{run_root}/shared/leaderboard.json`, `{run_root}/shared/state.json`, or
-  `{run_root}/shared/workspace-map.json`.
+- other chains' checkpoints under `{run_root}/shared/checkpoints/`; only `{lane}.json` there
+  is yours;
+- `{run_root}/shared/planning-workspace/` or anything under
+  `{run_root}/shared/planning-revisions/`;
+- `{run_root}/shared/leaderboard.json`, `{run_root}/shared/state.json`,
+  `{run_root}/shared/manifest.json`, or `{run_root}/shared/workspace-map.json`.
 The runtime hands you other chains' code, reports, and candidates only at a barrier. The
 filesystem does not enforce this boundary; keeping it is what keeps the chains independent."""
 

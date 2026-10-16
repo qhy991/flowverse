@@ -17,8 +17,9 @@ sessions. Leave the next actor a coherent worktree, tests, and a precise report.
 
 Between barriers a chain sees only its own work: its cwd, its artifact root, its checkpoint, its
 own report log, and the latest frozen epoch. Do not read another chain's live worktree, report
-log, or artifact root, the live leaderboard, the state mirror, or the workspace map. The prompt
-lists the exact paths. The filesystem does not enforce this boundary. Keeping it is what keeps
+log, artifact root, or checkpoint, the planning workspace or planning revisions, the live
+leaderboard, the manifest, the state mirror, or the workspace map. The prompt lists the exact
+paths. The filesystem does not enforce this boundary. Keeping it is what keeps
 the chains independent, and independence is the point of the flow.
 
 ## The barrier

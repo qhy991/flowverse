@@ -39,6 +39,7 @@ from sync_branching_chain.barrier import (
     quota_end,
 )
 from sync_branching_chain.epochs import EpochStore
+from sync_branching_chain.prompts import barrier_protocol
 from sync_branching_chain.runtime import SyncBranchingChainRuntime, execute
 
 
@@ -637,6 +638,31 @@ def test_failed_post_barrier_turn_redelivers_the_same_peer_batch(
         "lane-1": first["lane-1"]["report_bytes"],
         "lane-3": first["lane-3"]["report_bytes"],
     }
+
+
+def test_isolation_forbids_every_peer_channel_but_the_own_checkpoint() -> None:
+    prompt = barrier_protocol(
+        lane="lane-2",
+        interval=3,
+        committed=0,
+        session=1,
+        run_root="/run",
+        own_reports="/run/shared/reports/lane-2.jsonl",
+        epoch=None,
+        exchange=None,
+    )
+    allowed, forbidden = prompt.split("Do not\nread:", 1)
+    forbidden = forbidden.split("The runtime hands you", 1)[0]
+    assert "your checkpoint" in allowed
+    for channel in (
+        "`/run/shared/manifest.json`",
+        "other chains' checkpoints under `/run/shared/checkpoints/`",
+        "`/run/shared/planning-workspace/`",
+        "`/run/shared/planning-revisions/`",
+        "`/run/shared/state.json`",
+    ):
+        assert channel in forbidden
+    assert "only `lane-2.json` there\n  is yours" in forbidden
 
 
 def test_resume_with_a_different_barrier_interval_is_rejected(

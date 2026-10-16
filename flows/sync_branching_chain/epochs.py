@@ -44,8 +44,23 @@ def _numbered(name: str) -> int | None:
 def _remove(path: Path) -> None:
     if path.is_symlink() or not path.is_dir():
         path.unlink()
-    else:
-        shutil.rmtree(path)
+        return
+    retried: set[str] = set()
+
+    def writable(_: object, failed: str, error: BaseException) -> None:
+        # Frozen copies keep a lane's read-only dirs, such as a Go module cache.
+        if not isinstance(error, PermissionError) or failed in retried:
+            raise error
+        retried.add(failed)
+        directory = os.path.isdir(failed) and not os.path.islink(failed)
+        for target in (os.path.dirname(failed), *([failed] if directory else [])):
+            os.chmod(target, stat.S_IMODE(os.lstat(target).st_mode) | stat.S_IRWXU)
+        if directory:
+            shutil.rmtree(failed, onexc=writable)
+        else:
+            os.unlink(failed)
+
+    shutil.rmtree(path, onexc=writable)
 
 
 @dataclass(frozen=True, slots=True)

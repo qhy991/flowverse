@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import stat
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -215,6 +216,25 @@ def test_sweep_is_idempotent_and_reports_uncommitted_dirs(tmp_path: Path) -> Non
     assert (epochs.frozen(1, "lane-1").worktree / "marker.txt").is_file()
 
     epochs.freeze(2, {"best": None})
+    assert epochs.sweep(2) == []
+    assert sorted(p.name for p in epochs.root.iterdir()) == [
+        "0002",
+        "empty-leaderboard.json",
+    ]
+
+
+def test_sweep_removes_a_frozen_read_only_tree(tmp_path: Path) -> None:
+    epochs = store(tmp_path)
+    cache = epochs.paths.workspace("lane-2") / "gomodcache"
+    (cache / "pkg").mkdir(parents=True)
+    (cache / "pkg" / "mod.go").write_text("module m\n")
+    for folder in (cache / "pkg", cache):
+        folder.chmod(0o555)
+    epochs.freeze(1, {"best": None})
+    epochs.freeze(2, {"best": None})
+    frozen = epochs.frozen(1, "lane-2").worktree / "gomodcache"
+    assert stat.S_IMODE(frozen.stat().st_mode) == 0o555
+
     assert epochs.sweep(2) == []
     assert sorted(p.name for p in epochs.root.iterdir()) == [
         "0002",

@@ -534,14 +534,20 @@ def run(
     task: str = TASK,
     barrier_interval: int = 2,
 ) -> None:
-    execute(
+    runtime = SyncBranchingChainRuntime(
         chosen,
         task,
         config(barrier_interval),
         state,
-        _sleep=lambda _: time.sleep(0.002),
-        _max_turns=max_turns,
+        sleeper=lambda _: time.sleep(0.002),
+        max_turns=max_turns,
     )
+    try:
+        runtime.run()
+    finally:
+        # run() stops without waiting, so a submitted session may still be recording
+        # its prompt or writing its worktree when the test starts reading them.
+        runtime.executor.shutdown(wait=True)
 
 
 def lane_prompts(chosen: SimpleNamespace, lane: str) -> dict[int, list[str]]:
@@ -715,7 +721,7 @@ def test_resume_with_a_different_barrier_interval_is_rejected(
     state: dict[str, Any] = {}
     run(agents(), state, 3)
     with pytest.raises(ValueError, match="created with barrier_interval 2, not 3"):
-        run(agents(), state, 3, barrier_interval=3)
+        execute(agents(), TASK, config(3), state, _max_turns=3)
     assert state["sync_branching_chain"]["barrier_interval"] == 2
 
 

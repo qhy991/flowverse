@@ -71,6 +71,10 @@ class LaneScheduler(RuntimeState):
         """Return the ordinary inter-lane report batch for one consumer."""
         return self.bus.unread(lane, cursors)
 
+    def _candidate_view(self, lane: LaneName) -> tuple[dict[str, object], str]:
+        """Return the leaderboard snapshot and file path one lane's prompt may cite."""
+        return json_copy(self.control["candidate_board"]), str(self.paths.leaderboard)
+
     def _lane_instructions(self, lane: LaneName) -> str:
         """Return additive mode instructions without changing LaneReport."""
         return ""
@@ -118,6 +122,7 @@ class LaneScheduler(RuntimeState):
         actor_index = self._actor_index(runtime, durable)
         runtime.actor_at = actor_index
         actor = runtime.actors[actor_index]
+        board, board_path = self._candidate_view(lane)
         prompt = lane_prompt(
             objective=cast("str", self.control["objective"]),
             lane=lane,
@@ -131,8 +136,8 @@ class LaneScheduler(RuntimeState):
             artifact_root=str(self.paths.artifact_root(lane)),
             identity=identity,
             integration_item=self._integration_item(lane),
-            candidate_board=json_copy(self.control["candidate_board"]),
-            leaderboard_path=str(self.paths.leaderboard),
+            candidate_board=board,
+            leaderboard_path=board_path,
             runtime_status={
                 "consecutive_failures": int(durable.get("consecutive_failures", 0)),
                 "last_error": durable.get("last_error"),

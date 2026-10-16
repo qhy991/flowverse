@@ -46,7 +46,9 @@ def barrier_ready(
     """
     if in_flight:
         return False
-    live = [(lane, turns) for lane, (turns, blocked) in lanes.items() if not blocked]
+    live: list[tuple[LaneName, int]] = [
+        (lane, turns) for lane, (turns, blocked) in lanes.items() if not blocked
+    ]
     return bool(live) and all(
         held(turns, quota_end(receipts, lane, interval)) for lane, turns in live
     )

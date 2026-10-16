@@ -1,0 +1,7 @@
+# SEIS Sync Branching Chain with N=9 sessions per chain between barriers.
+rest_seconds: 1.0
+resume_mode: auto
+confirm_large_workspace_copies: false
+workspace_file_warning_threshold: 5000
+workspace_copy_warning_threshold_bytes: 1073741824
+barrier_interval: 9

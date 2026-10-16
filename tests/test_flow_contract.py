@@ -35,3 +35,31 @@ def test_public_flow_declares_fixed_seven_agent_topology() -> None:
     offered_names = offered(flows)
     assert "parallel_flame_chase" in offered_names
     assert "_parallel_flame_chase" not in offered_names
+
+
+def test_sync_branching_chain_declares_the_shared_topology_and_its_interval() -> None:
+    flows = Path(__file__).parents[1] / "flows"
+    chain = flows / "sync_branching_chain" / "__init__.py"
+    assert drives(chain) == (
+        "coordinator",
+        "lane_1_actor_a",
+        "lane_1_actor_b",
+        "lane_2_actor_a",
+        "lane_2_actor_b",
+        "lane_3_actor_a",
+        "lane_3_actor_b",
+    )
+    assert resumes(chain)
+    config = configures(chain)
+    assert config is not None
+    assert set(config.model_fields) == {
+        "rest_seconds",
+        "resume_mode",
+        "confirm_large_workspace_copies",
+        "workspace_file_warning_threshold",
+        "workspace_copy_warning_threshold_bytes",
+        "barrier_interval",
+    }
+    assert config().barrier_interval == 3
+    assert [skill.name for skill in brought(chain.parent)] == ["sync-branching-chain"]
+    assert "sync_branching_chain" in offered(flows)

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import socket
 import stat
+import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -242,6 +246,40 @@ def test_sweep_removes_a_frozen_read_only_tree(tmp_path: Path) -> None:
     ]
 
 
+@pytest.fixture
+def short_tmp() -> Iterator[Path]:
+    # A Unix socket path must fit in about 104 bytes on macOS.
+    root = Path(tempfile.mkdtemp(dir="/tmp"))
+    yield root
+    shutil.rmtree(root)
+
+
+def test_freeze_skips_sockets_and_keeps_files_dirs_and_symlinks(
+    short_tmp: Path, monkeypatch: Any
+) -> None:
+    epochs = store(short_tmp)
+    # GNU cp copies a socket as an inert node; without cp, snapshot takes the
+    # inspect_workspace fallback that macOS's cp failure reaches.
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    git = epochs.paths.workspace("lane-1") / ".git"
+    git.mkdir()
+    (git / "HEAD").write_text("ref: refs/heads/main\n")
+    (git / "head-link").symlink_to("HEAD")
+    with socket.socket(socket.AF_UNIX) as daemon:
+        daemon.bind(str(git / "d.ipc"))
+        frozen = epochs.freeze(1, {"best": None})
+        assert epochs.freeze(2, {"best": None}).skipped == frozen.skipped
+
+    assert frozen.skipped == ["lanes/lane-1/worktree/.git/d.ipc"]
+    copy = epochs.frozen(1, "lane-1").worktree
+    assert (copy / ".git" / "HEAD").read_text() == "ref: refs/heads/main\n"
+    assert os.readlink(copy / ".git" / "head-link") == "HEAD"
+    assert (copy / "marker.txt").read_text() == "lane-1 v0\n"
+    assert not (copy / ".git" / "d.ipc").exists()
+    assert not (copy / ".git" / "d.ipc").is_symlink()
+    epochs.validate(1, frozen.report_bytes)
+
+
 def test_freeze_copies_trees_board_and_whole_report_lines(tmp_path: Path) -> None:
     epochs = store(tmp_path)
     paths = epochs.paths
@@ -250,7 +288,7 @@ def test_freeze_copies_trees_board_and_whole_report_lines(tmp_path: Path) -> Non
         handle.write(b'{"partial":')
     (paths.artifact_root("lane-3") / "candidate.py").write_text("v1\n")
 
-    report_bytes = epochs.freeze(1, {"best": {"lane": "lane-3"}})
+    report_bytes = epochs.freeze(1, {"best": {"lane": "lane-3"}}).report_bytes
     (paths.source / "marker.txt").write_text("lane-1 v1\n", encoding="utf-8")
 
     whole = len(b'{"summary": "lane-2 wrote v1"}\n')
@@ -267,7 +305,7 @@ def test_freeze_copies_trees_board_and_whole_report_lines(tmp_path: Path) -> Non
 
 def test_validate_tolerates_an_orphan_next_epoch(tmp_path: Path) -> None:
     epochs = store(tmp_path)
-    committed = epochs.freeze(1, {"best": None})
+    committed = epochs.freeze(1, {"best": None}).report_bytes
     epochs.freeze(2, {"best": None})
     epochs.validate(1, committed)
     shutil.rmtree(epochs.frozen(1, "lane-2").artifacts)
@@ -503,6 +541,8 @@ def test_chains_are_isolated_until_a_barrier_exchanges_frozen_copies(
     assert "lane-3 wrote v1" in after
     assert f"code `{epoch / 'lanes' / 'lane-3' / 'worktree'}`" in after
     assert f"code `{epoch / 'lanes' / 'lane-1' / 'worktree'}`" in after
+    [committed] = [e for e in state["events"] if e["kind"] == "barrier_committed"]
+    assert committed["skipped_special_files"] == []
     assert (epoch / "lanes/lane-3/worktree/marker.txt").read_text() == "lane-3 v2\n"
     assert (epoch / "lanes/lane-1/worktree/marker.txt").read_text() == "lane-1 v2\n"
     assert (root / "private/lane-3/marker.txt").read_text() in {
@@ -541,7 +581,7 @@ def test_crash_between_epoch_rename_and_receipt_refreezes_on_resume(
 
     def crash_after_rename(
         self: EpochStore, barrier: int, board: dict[str, object]
-    ) -> dict[str, int]:
+    ) -> epochs_module.Frozen:
         freeze(self, barrier, board)
         raise RuntimeError("simulated crash")
 

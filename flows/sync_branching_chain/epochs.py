@@ -63,6 +63,42 @@ def _remove(path: Path) -> None:
     shutil.rmtree(path, onexc=writable)
 
 
+def _freeze_tree(source: Path, destination: Path) -> list[Path]:
+    """Copy one lane tree and return the source-relative special files it skipped.
+
+    ``snapshot`` keeps reflink clones where ``cp`` supports them, but its fallback
+    rejects a socket, FIFO, or device, which a lane can create (git fsmonitor's socket).
+    """
+    try:
+        snapshot(source, destination)
+    except ValueError:
+        pass
+    else:
+        return []
+    skipped: list[Path] = []
+
+    def special(folder: str, names: list[str]) -> set[str]:
+        found = {
+            name
+            for name in names
+            if not stat.S_ISREG(mode := os.lstat(os.path.join(folder, name)).st_mode)
+            and not stat.S_ISDIR(mode)
+            and not stat.S_ISLNK(mode)
+        }
+        skipped.extend(Path(folder, name).relative_to(source) for name in sorted(found))
+        return found
+
+    shutil.copytree(source, destination, symlinks=True, ignore=special)
+    return skipped
+
+
+class Frozen(NamedTuple):
+    """What one freeze recorded: each lane's frozen report bytes and skipped files."""
+
+    report_bytes: dict[LaneName, int]
+    skipped: list[str]
+
+
 @dataclass(frozen=True, slots=True)
 class EpochStore:
     """Own every byte under ``shared/epochs``.
@@ -118,19 +154,27 @@ class EpochStore:
                     discarded.append(entry.name)
         return discarded
 
-    def freeze(self, barrier: int, board: Mapping[str, object]) -> dict[LaneName, int]:
-        """Materialize epoch ``barrier`` atomically and return each lane's report bytes.
+    def freeze(self, barrier: int, board: Mapping[str, object]) -> Frozen:
+        """Materialize epoch ``barrier`` atomically.
 
         Requires ``dir(barrier)`` to be absent and every lane to be quiescent. All
         copies land in a staging dir that one rename publishes, so a crash at any step
-        leaves only garbage for ``sweep``.
+        leaves only garbage for ``sweep``. Sockets, FIFOs, and devices that the copy
+        skipped are named in ``skipped``, relative to the epoch dir.
         """
         staging = self.root / f"{_STAGING}{barrier:04d}-{uuid.uuid4().hex}"
         report_bytes: dict[LaneName, int] = {}
+        skipped: list[str] = []
         for lane in self.lanes:
             target = _layout(staging, self.paths.source, lane)
-            snapshot(self.paths.workspace(lane), target.worktree)
-            snapshot(self.paths.artifact_root(lane), target.artifacts)
+            for source, destination in (
+                (self.paths.workspace(lane), target.worktree),
+                (self.paths.artifact_root(lane), target.artifacts),
+            ):
+                skipped += [
+                    (destination / path).relative_to(staging).as_posix()
+                    for path in _freeze_tree(source, destination)
+                ]
             live = (self.paths.reports / f"{lane}.jsonl").read_bytes()
             # The bus delivers only whole lines, so freeze up to the last newline.
             prefix = live[: live.rfind(b"\n") + 1]
@@ -139,7 +183,7 @@ class EpochStore:
             report_bytes[lane] = len(prefix)
         atomic_json(staging / "leaderboard.json", dict(board))
         os.rename(staging, self.dir(barrier))
-        return report_bytes
+        return Frozen(report_bytes, skipped)
 
     def board(self, barrier: int) -> dict[str, object]:
         return cast(
@@ -184,4 +228,4 @@ class EpochStore:
                 )
 
 
-__all__ = ["EpochStore", "FrozenLane"]
+__all__ = ["EpochStore", "Frozen", "FrozenLane"]

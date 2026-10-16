@@ -209,12 +209,12 @@ class SyncBranchingChainRuntime(ReportShareRuntime):
         barrier = committed + 1
         epochs = self.epochs
         self._log_discarded(epochs.sweep(committed))
-        report_bytes = epochs.freeze(barrier, self.control["candidate_board"])
+        frozen = epochs.freeze(barrier, self.control["candidate_board"])
         lanes = {
             lane: {
                 "turns": self._turns(lane),
                 "blocked": bool(self.control["lanes"][lane].get("blocked")),
-                "report_bytes": report_bytes[lane],
+                "report_bytes": frozen.report_bytes[lane],
             }
             for lane in self.lane_names
         }
@@ -225,6 +225,7 @@ class SyncBranchingChainRuntime(ReportShareRuntime):
                 "kind": "barrier_committed",
                 "barrier": barrier,
                 "blocked": [lane for lane, entry in lanes.items() if entry["blocked"]],
+                "skipped_special_files": frozen.skipped,
             }
         )
         self._persist()

@@ -92,6 +92,24 @@ def _freeze_tree(source: Path, destination: Path) -> list[Path]:
     return skipped
 
 
+def _read_board(path: Path) -> dict[str, object]:
+    try:
+        info = path.lstat()
+    except OSError as why:
+        raise RuntimeError(f"epoch leaderboard is missing: {path}") from why
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise RuntimeError(f"epoch leaderboard was replaced or linked: {path}")
+    try:
+        board = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as why:
+        raise RuntimeError(f"epoch leaderboard is unreadable: {path}") from why
+    if not isinstance(board, dict):
+        raise RuntimeError(  # noqa: TRY004 - layout checks fail closed with one type
+            f"epoch leaderboard is not a JSON object: {path}"
+        )
+    return cast("dict[str, object]", board)
+
+
 class Frozen(NamedTuple):
     """What one freeze recorded: each lane's frozen report bytes and skipped files."""
 
@@ -129,11 +147,16 @@ class EpochStore:
         return self.dir(barrier) / "leaderboard.json"
 
     def initialize(self, run_id: str) -> None:
-        """Create the epoch root and the pre-barrier empty board. Idempotent."""
+        """Create the epoch root and the pre-barrier empty board. Idempotent.
+
+        The empty board is derived, so an unreadable one is rewritten rather than fatal.
+        """
         if self.root.is_symlink():
             raise RuntimeError(f"runtime directory was replaced or linked: {self.root}")
         self.root.mkdir(parents=True, exist_ok=True)
-        if not self.leaderboard(0).exists():
+        try:
+            _read_board(self.leaderboard(0))
+        except RuntimeError:
             atomic_json(self.leaderboard(0), empty_leaderboard(run_id))
 
     def sweep(self, committed: int) -> list[str]:
@@ -186,10 +209,7 @@ class EpochStore:
         return Frozen(report_bytes, skipped)
 
     def board(self, barrier: int) -> dict[str, object]:
-        return cast(
-            "dict[str, object]",
-            json.loads(self.leaderboard(barrier).read_text(encoding="utf-8")),
-        )
+        return _read_board(self.leaderboard(barrier))
 
     def bus(self, barrier: int) -> ReportBus:
         """Read only the frozen report prefixes of epoch ``barrier``.
@@ -200,7 +220,7 @@ class EpochStore:
         return ReportBus(RunPaths(self.dir(barrier), self.paths.source), self.lanes)
 
     def validate(self, barrier: int, report_bytes: Mapping[LaneName, int]) -> None:
-        """Fail closed unless epoch ``barrier`` matches its receipt; stats only."""
+        """Fail closed unless epoch ``barrier`` matches its receipt and has a board."""
         epoch = self.dir(barrier)
         directories = [epoch]
         for lane in self.lanes:
@@ -226,6 +246,7 @@ class EpochStore:
                     f"committed epoch log {log} has {info.st_size} bytes; "
                     f"its receipt froze {report_bytes[lane]}"
                 )
+        self.board(barrier)
 
 
 __all__ = ["EpochStore", "Frozen", "FrozenLane"]

@@ -314,6 +314,50 @@ def test_validate_tolerates_an_orphan_next_epoch(tmp_path: Path) -> None:
         epochs.validate(1, committed)
 
 
+@pytest.mark.parametrize(
+    ("tamper", "message"),
+    [
+        (lambda board: board.unlink(), "epoch leaderboard is missing"),
+        (
+            lambda board: board.write_text("{not json"),
+            "epoch leaderboard is unreadable",
+        ),
+        (
+            lambda board: board.write_text("[]"),
+            "epoch leaderboard is not a JSON object",
+        ),
+        (
+            lambda board: (board.unlink(), board.mkdir()),
+            "epoch leaderboard was replaced or linked",
+        ),
+        (
+            lambda board: (
+                board.rename(board.with_name("real.json")),
+                board.symlink_to("real.json"),
+            ),
+            "epoch leaderboard was replaced or linked",
+        ),
+    ],
+    ids=["missing", "unparseable", "not-an-object", "directory", "symlink"],
+)
+def test_validate_fails_closed_on_a_tampered_frozen_board(
+    tmp_path: Path, tamper: Any, message: str
+) -> None:
+    epochs = store(tmp_path)
+    committed = epochs.freeze(1, {"best": None}).report_bytes
+    tamper(epochs.leaderboard(1))
+    with pytest.raises(RuntimeError, match=message):
+        epochs.validate(1, committed)
+
+
+def test_initialize_rewrites_an_unreadable_empty_board(tmp_path: Path) -> None:
+    epochs = store(tmp_path)
+    epochs.leaderboard(0).write_text("{not json")
+    epochs.initialize("run-1")
+    assert epochs.board(0)["submission_count"] == 0
+    assert epochs.board(0)["run_id"] == "run-1"
+
+
 def test_acks_from_one_epoch_bus_stay_valid_on_the_next(tmp_path: Path) -> None:
     epochs = store(tmp_path)
     live = ReportBus(epochs.paths, LANES)

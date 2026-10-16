@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 from typing import Any
 
 import pytest
+from _parallel_flame_chase.core.models import LANES
+from _parallel_flame_chase.persistence.events import ReportBus
+from _parallel_flame_chase.persistence.workspace import (
+    RunPaths,
+    initialize_paths,
+)
+from _parallel_flame_chase.persistence.workspace import snapshot as real_snapshot
+from sync_branching_chain import epochs as epochs_module
 from sync_branching_chain.barrier import (
     barrier_ready,
     first_after_barrier,
     held,
     quota_end,
 )
+from sync_branching_chain.epochs import EpochStore
 
 
 def receipt(**turns: int) -> dict[str, Any]:
@@ -132,3 +143,125 @@ def test_first_after_barrier(
     receipts: list[dict[str, Any]], lane: str, turns: int, expected: bool
 ) -> None:
     assert first_after_barrier(receipts, lane, turns) is expected  # type: ignore[arg-type]
+
+
+def run_paths(tmp_path: Path) -> RunPaths:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "marker.txt").write_text("lane-1 v0\n", encoding="utf-8")
+    paths = RunPaths(tmp_path / "run", source)
+    initialize_paths(paths, make_snapshots=True, lanes=LANES)
+    return paths
+
+
+def store(tmp_path: Path) -> EpochStore:
+    epochs = EpochStore(run_paths(tmp_path), LANES)
+    epochs.initialize("run-1")
+    return epochs
+
+
+def test_interrupted_freeze_leaves_only_sweepable_garbage(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    epochs = store(tmp_path)
+    copies = 0
+
+    def crash_on_fourth_copy(source: Path, destination: Path) -> None:
+        nonlocal copies
+        copies += 1
+        if copies == 4:
+            raise OSError("simulated disk full")
+        real_snapshot(source, destination)
+
+    monkeypatch.setattr(epochs_module, "snapshot", crash_on_fourth_copy)
+    with pytest.raises(OSError, match="simulated disk full"):
+        epochs.freeze(1, {"best": None})
+    assert not epochs.dir(1).exists()
+    assert [p.name.startswith(".staging-0001-") for p in epochs.root.iterdir()].count(
+        True
+    ) == 1
+
+    assert epochs.sweep(0) == []
+    assert sorted(p.name for p in epochs.root.iterdir()) == ["empty-leaderboard.json"]
+
+
+def test_sweep_is_idempotent_and_reports_uncommitted_dirs(tmp_path: Path) -> None:
+    epochs = store(tmp_path)
+    epochs.freeze(1, {"best": None})
+    epochs.freeze(2, {"best": None})
+    (epochs.root / ".staging-0003-abc").mkdir()
+
+    assert epochs.sweep(1) == ["0002"]
+    assert epochs.sweep(1) == []
+    assert sorted(p.name for p in epochs.root.iterdir()) == [
+        "0001",
+        "empty-leaderboard.json",
+    ]
+    assert (epochs.frozen(1, "lane-1").worktree / "marker.txt").is_file()
+
+    epochs.freeze(2, {"best": None})
+    assert epochs.sweep(2) == []
+    assert sorted(p.name for p in epochs.root.iterdir()) == [
+        "0002",
+        "empty-leaderboard.json",
+    ]
+
+
+def test_freeze_copies_trees_board_and_whole_report_lines(tmp_path: Path) -> None:
+    epochs = store(tmp_path)
+    paths = epochs.paths
+    ReportBus(paths, LANES).publish("lane-2", {"summary": "lane-2 wrote v1"})
+    with (paths.reports / "lane-2.jsonl").open("ab") as handle:
+        handle.write(b'{"partial":')
+    (paths.artifact_root("lane-3") / "candidate.py").write_text("v1\n")
+
+    report_bytes = epochs.freeze(1, {"best": {"lane": "lane-3"}})
+    (paths.source / "marker.txt").write_text("lane-1 v1\n", encoding="utf-8")
+
+    whole = len(b'{"summary": "lane-2 wrote v1"}\n')
+    assert report_bytes == {"lane-1": 0, "lane-2": whole, "lane-3": 0}
+    assert (epochs.frozen(1, "lane-1").worktree / "marker.txt").read_text() == (
+        "lane-1 v0\n"
+    )
+    assert (epochs.frozen(1, "lane-3").artifacts / "candidate.py").read_text() == "v1\n"
+    assert epochs.board(1) == {"best": {"lane": "lane-3"}}
+    epochs.validate(1, report_bytes)
+    with pytest.raises(RuntimeError, match="its receipt froze"):
+        epochs.validate(1, {**report_bytes, "lane-2": whole + 1})
+
+
+def test_validate_tolerates_an_orphan_next_epoch(tmp_path: Path) -> None:
+    epochs = store(tmp_path)
+    committed = epochs.freeze(1, {"best": None})
+    epochs.freeze(2, {"best": None})
+    epochs.validate(1, committed)
+    shutil.rmtree(epochs.frozen(1, "lane-2").artifacts)
+    with pytest.raises(RuntimeError, match="committed epoch path is missing"):
+        epochs.validate(1, committed)
+
+
+def test_acks_from_one_epoch_bus_stay_valid_on_the_next(tmp_path: Path) -> None:
+    epochs = store(tmp_path)
+    live = ReportBus(epochs.paths, LANES)
+    live.publish("lane-1", {"summary": "lane-1 wrote v1"})
+    live.publish("lane-3", {"summary": "lane-3 wrote v1"})
+    epochs.freeze(1, {"best": None})
+    live.publish("lane-1", {"summary": "lane-1 wrote v2"})
+
+    cursors: dict[str, Any] = {}
+    first, acks = epochs.bus(1).unread("lane-2", cursors)
+    assert [d["report"]["summary"] for d in first] == [
+        "lane-1 wrote v1",
+        "lane-3 wrote v1",
+    ]
+    ReportBus.acknowledge("lane-2", cursors, acks)
+    assert epochs.bus(1).unread("lane-2", cursors)[0] == []
+
+    live.publish("lane-3", {"summary": "lane-3 wrote v2"})
+    epochs.freeze(2, {"best": None})
+    live.publish("lane-1", {"summary": "lane-1 wrote v3"})
+    second, _ = epochs.bus(2).unread("lane-2", cursors)
+    assert [d["report"]["summary"] for d in second] == [
+        "lane-1 wrote v2",
+        "lane-3 wrote v2",
+    ]

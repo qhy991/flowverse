@@ -3,9 +3,29 @@
 Status: proposed design, 2026-10-29. This document specifies a future `forge_kernel` flow.
 It adds no executable flow, release, index manifest, or performance result.
 
-Current adoption uses the existing Ralph loop with the [task agent.md](../ralph-loop/agent.md).
-Make every fresh activation read that file in the owning task. The dedicated flow below remains
-an optional implementation design; adopting the instructions does not require building it.
+Selected delivery uses the existing Ralph loop with the [task agent.md](../ralph-loop/agent.md).
+This design is maintained in `qhy991/flowverse` for personal use. Do not create an upstream PR
+or register a release in the official index as part of this work.
+
+## Personal Ralph configuration
+
+Put the linked instructions in the owning kernel task's `agent.md`. Make every fresh Ralph
+activation read it, the frozen task contract, and the task's current evidence record.
+One existing Ralph agent performs both architecture reasoning and code changes in separate
+steps. A second agent and a new workflow implementation are unnecessary for this configuration.
+
+Each activation selects its next action from the recorded evidence: inspect the reference,
+test a hypothesis, implement a decision, evaluate the candidate, or revisit architecture after
+stagnation. Save the candidate identity, verifier result, unresolved question, and next action
+in the task's existing record so a fresh activation can continue.
+
+The instruction file owns the operational rules. The task's existing verifier owns acceptance.
+Prompt instructions guide agent behavior; they do not implement deterministic job recovery,
+source isolation, or automatic reference promotion. Report those capabilities as unavailable
+unless the owning task already enforces them.
+
+The dedicated flow below remains an optional implementation design. It has not been implemented
+and is not required to adopt the Ralph instructions.
 
 ## Problem and intended behavior
 
@@ -339,9 +359,11 @@ reasons to add a new general service or weaken the method.
 
 This fork's current `main` is a release index. Keep this design outside `flows/`. Future source
 belongs in its own repository with the package, tests, README, and license. After actual runtime
-and native acceptance, tag a release and register its real tested commit at
-`flows/qhy991/forge_kernel/<version>/flow.yaml`, following
-[Contributing](../../CONTRIBUTING.md). Do not invent a source repository URL, tag, or commit in advance.
+and native acceptance, any release remains in the user's own source repository and fork index.
+An entry in that fork would use `flows/qhy991/forge_kernel/<version>/flow.yaml` and pin the real
+tested commit under the [manifest rules](../../CONTRIBUTING.md#the-manifest).
+Official-index registration and upstream PRs are outside this delivery scope and require a new
+explicit user request. Do not invent a source repository URL, tag, or commit in advance.
 
 This proposal does not change hmz core, published manifests, the index schema, or CI policy.
 For the optional dedicated flow, the first implementation unit is the single-generation controller

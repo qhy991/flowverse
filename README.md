@@ -84,6 +84,9 @@ may be listed by name alone, or to `None` for anybody's.
 
 ## Contributing
 
+The fork's [ForgeKernel workflow design](docs/designs/forge-kernel.md) specifies a proposed
+architecture-guided kernel workflow. It is a design document, not an installable release.
+
 To list your flow, publish it in a repository of your own and open a pull request adding its
 manifest: [CONTRIBUTING.md](CONTRIBUTING.md) is the whole guide. A version of a flow already
 listed, newer than all of its others, that changes nothing but `version`, `ref` and `commit` is

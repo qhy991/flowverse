@@ -14,6 +14,7 @@ and this index pins every released version of it to a commit, as
 - [Background](#background)
 - [Install](#install)
 - [Usage](#usage)
+- [Personal ForgeKernel](#personal-forgekernel)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -82,13 +83,30 @@ may be listed by name alone, or to `None` for anybody's.
 > approval. Review in this index lowers the risk; it does not remove it. Read
 > [Security](https://docs.humanfia.ai/humanize/user/security) first.
 
+## Personal ForgeKernel
+
+This personal fork lists [`qhy991/forge_kernel` version 0.1.0](flows/qhy991/forge_kernel/0.1.0/flow.yaml).
+The executable source is [qhy991/forge-kernel-flow](https://github.com/qhy991/forge-kernel-flow/tree/v0.1.0).
+It uses one Ralph-style worker and a deployment-owned evaluator for bounded kernel campaigns.
+The source README includes a runnable offline demonstration and native task requirements.
+The demonstration uses CPU correctness checks and synthetic timings; it is not GPU qualification.
+
+Use the compatible Humanize runtime pinned by the source package. In `/flows` → **Flowverses**,
+add `https://github.com/qhy991/flowverse` under a name such as `personal`, then install
+`qhy991/forge_kernel` at `0.1.0`. It runs as `@personal/qhy991/forge_kernel`.
+Source installation and the exact task, worker, environment, and evaluator bindings are documented
+in the [source README](https://github.com/qhy991/forge-kernel-flow/blob/v0.1.0/README.md).
+This release is registered only in this fork; no upstream PR or official-index submission is part
+of this delivery.
+
+For an existing plain Ralph loop, the separate [task agent.md](docs/ralph-loop/agent.md) remains
+an instruction template. Explicitly make each fresh activation read it. Prompt instructions alone
+do not provide the executable controller's receipt checks and recovery behavior.
+
 ## Contributing
 
-The fork's [ForgeKernel workflow design](docs/designs/forge-kernel.md) specifies a proposed
-architecture-guided kernel workflow. It is a design document, not an installable release.
-For adoption with the existing Ralph loop, use the [task agent.md](docs/ralph-loop/agent.md).
-Copy its instructions into the owning task's `agent.md` and explicitly tell each fresh Ralph
-activation to read that file. This index does not activate those instructions automatically.
+The fork's [ForgeKernel implementation notes](docs/designs/forge-kernel.md) explain the personal
+workflow and its verification boundary. Its source and install entry are linked above.
 
 To list your flow, publish it in a repository of your own and open a pull request adding its
 manifest: [CONTRIBUTING.md](CONTRIBUTING.md) is the whole guide. A version of a flow already

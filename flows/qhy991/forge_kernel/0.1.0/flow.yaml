@@ -1,0 +1,8 @@
+name: forge_kernel
+version: 0.1.0
+description: Runs bounded kernel campaigns with one Ralph worker and independent evaluator receipts.
+repo: qhy991/forge-kernel-flow
+ref: v0.1.0
+commit: 695e332470a6ced24f0608fcb4319ef91f09d230
+subdir: forge_kernel
+license: MIT

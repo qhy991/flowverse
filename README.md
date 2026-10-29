@@ -86,6 +86,9 @@ may be listed by name alone, or to `None` for anybody's.
 
 The fork's [ForgeKernel workflow design](docs/designs/forge-kernel.md) specifies a proposed
 architecture-guided kernel workflow. It is a design document, not an installable release.
+For adoption with the existing Ralph loop, use the [task agent.md](docs/ralph-loop/agent.md).
+Copy its instructions into the owning task's `agent.md` and explicitly tell each fresh Ralph
+activation to read that file. This index does not activate those instructions automatically.
 
 To list your flow, publish it in a repository of your own and open a pull request adding its
 manifest: [CONTRIBUTING.md](CONTRIBUTING.md) is the whole guide. A version of a flow already

@@ -3,6 +3,10 @@
 Status: proposed design, 2026-10-29. This document specifies a future `forge_kernel` flow.
 It adds no executable flow, release, index manifest, or performance result.
 
+Current adoption uses the existing Ralph loop with the [task agent.md](../ralph-loop/agent.md).
+Make every fresh activation read that file in the owning task. The dedicated flow below remains
+an optional implementation design; adopting the instructions does not require building it.
+
 ## Problem and intended behavior
 
 A kernel search can stop improving because its early architecture decisions remain fixed.
@@ -340,8 +344,8 @@ and native acceptance, tag a release and register its real tested commit at
 [Contributing](../../CONTRIBUTING.md). Do not invent a source repository URL, tag, or commit in advance.
 
 This proposal does not change hmz core, published manifests, the index schema, or CI policy.
-The next implementation unit is the single-generation controller and fake evaluator recovery
-scenario, followed by one authorized native-task binding.
+For the optional dedicated flow, the first implementation unit is the single-generation controller
+and fake evaluator recovery scenario, followed by one authorized native-task binding.
 
 ## Sources and evidence boundary
 
